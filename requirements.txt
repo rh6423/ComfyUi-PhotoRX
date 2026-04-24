@@ -1,7 +1,12 @@
-# PhotoRX ComfyUI Plugin Dependencies
-# These are required for the film grain rendering engine
+# PhotoRX - Film Grain Rendering for ComfyUI
+# Dependencies
 
-numpy>=1.24.0
-numba>=0.58.0
-Pillow>=10.0.0
-scipy>=1.10.0
+# Core dependencies
+numpy>=1.20.0
+Pillow>=9.0.0
+
+# Monte Carlo renderer (optional but recommended)
+numba>=0.56.0
+
+# PyTorch - provided by ComfyUI but listed for standalone use
+# torch>=2.0.0
