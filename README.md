@@ -1,9 +1,14 @@
-# PhotoRX - Film Grain Rendering for ComfyUI
+# PhotoRX Node Pack - ComfyUI Custom Nodes
 
-A physically-based film grain renderer using the pixel-wise Boolean model. Supports both Monte Carlo simulation and fast analytical approximation.
+A unified node pack for ComfyUI containing film grain rendering and image utilities.
 
-## Features
+## Nodes
 
+### GrainRX
+
+Physically-based film grain renderer using the pixel-wise Boolean model. Supports both Monte Carlo simulation and fast analytical approximation.
+
+**Features:**
 - **Physically-based rendering**: Uses the pixel-wise Boolean model, a mathematically rigorous framework for simulating silver halide crystal distributions
 - **Multiple film stocks**: Presets for popular B&W and color films (Kodak Tri-X, Ilford HP5, Portra 400, etc.)
 - **Two rendering modes**: 
@@ -11,6 +16,58 @@ A physically-based film grain renderer using the pixel-wise Boolean model. Suppo
   - Monte Carlo simulation (reference implementation, slower but physically exact)
 - **Batch processing**: Works with ComfyUI's batch system for video/frame sequences
 - **Per-channel grain**: Color films render separate grain layers for R/G/B channels
+
+#### GrainRX
+
+Simple interface with preset selection:
+
+```
+[image] → [GrainRX] → [output]
+```
+
+**Parameters:**
+- **profile**: Film stock preset (default: portra400)
+- **strength**: Grain intensity multiplier [0.0, 2.0] (default: 1.0)
+- **black_white**: Convert to B&W before grain (default: False)
+- **seed**: Random seed for reproducibility (default: 42)
+
+**Optional parameters:**
+- **use_fast**: Use fast analytical renderer (default: True)
+- **filter_sigma**: Gaussian filter sigma [0.1, 3.0] (default: 0.8)
+- **zoom**: Output zoom factor [1.0, 4.0] (default: 1.0)
+
+#### GrainRX-Advanced
+
+Full control over all parameters. Same functionality as GrainRX but with all parameters exposed as required inputs for explicit control.
+
+#### GrainRX-ProfileInfo
+
+Utility node that displays information about a selected film profile. Useful for exploring available presets and their characteristics before using them in your workflow.
+
+---
+
+### SizeRX
+
+Calculate image dimensions from aspect ratio, orientation, and megapixels. Outputs width and height integers rounded to nearest multiple of 8 (required by diffusion model VAEs).
+
+**Parameters:**
+- **megapixels**: Target megapixels [0.1, 3.0] (default: 1.0)
+- **orientation**: 'landscape' or 'portrait' (default: landscape)
+- **preset**: Aspect ratio preset (default: 16:9)
+
+**Available aspect ratios:**
+- `1:1` - Square
+- `4:3` - Classic TV, 35mm film frame
+- `3:2` - 35mm photography, DSLR default
+- `16:9` - HD video, modern TV/monitor
+- `2:1` - Ultrawide photography, Instagram
+- `21:9` - CinemaScope, ultrawide monitors
+
+**Outputs:**
+- **width**: Calculated width in pixels
+- **height**: Calculated height in pixels
+
+---
 
 ## Installation
 
@@ -28,34 +85,7 @@ git clone https://github.com/rh6423/ComfyUi-PhotoRX.git
 pip install -r ComfyUi-PhotoRX/requirements.txt
 ```
 
-## Usage
-
-### Basic Node
-
-Simple interface with preset selection:
-
-```
-[image] → [PhotoRX Film Grain Basic] → [output]
-```
-
-Parameters:
-- **profile**: Film stock preset (default: portra400)
-- **strength**: Grain intensity multiplier [0.0, 2.0] (default: 1.0)
-- **black_white**: Convert to B&W before grain (default: False)
-- **seed**: Random seed for reproducibility (default: 42)
-
-### Advanced Node
-
-Full control over all parameters:
-
-```
-[image] → [PhotoRX Film Grain Advanced] → [output]
-```
-
-Additional parameters:
-- **use_fast**: Use fast analytical renderer (default: True)
-- **filter_sigma**: Gaussian filter sigma [0.1, 3.0] (default: 0.8)
-- **zoom**: Output zoom factor [1.0, 4.0] (default: 1.0)
+---
 
 ## Film Stock Presets
 
@@ -87,6 +117,8 @@ Additional parameters:
 | `gold200` | Kodak Gold 200 | Classic consumer film with warm cast |
 | `ultramax400` | Kodak Ultramax 400 | Budget ISO 400 with characterful visible grain |
 
+---
+
 ## Technical Details
 
 ### The Pixel-Wise Boolean Model
@@ -101,11 +133,15 @@ In this model, grain is represented as a random field of overlapping disks (silv
 
 The fast renderer derives the mean, variance, and spatial correlation analytically, then synthesizes grain as signal-dependent filtered Gaussian noise matching those statistics. This achieves ~100x speedup over Monte Carlo while maintaining excellent visual quality.
 
+---
+
 ## Limitations
 
 - **8-bit conversion**: The core renderer operates on uint8 data. High-bit-depth inputs are quantized to 8-bit before processing. For best results, apply grain after any tone mapping or color grading.
 - **CPU-bound**: Rendering happens on CPU due to numba JIT compilation. GPU acceleration not currently supported.
 - **First-run delay**: Numba JIT compilation causes a ~1-2 second delay on first render.
+
+---
 
 ## Requirements
 
@@ -115,13 +151,19 @@ The fast renderer derives the mean, variance, and spatial correlation analytical
 - numba (for Monte Carlo renderer)
 - Pillow
 
+---
+
 ## License
 
-MIT License - see LICENSE file for details.
+Apache License 2.0 - see LICENSE file for details.
+
+---
 
 ## Contributing
 
-Issues and pull requests welcome! Please read the [contributing guidelines](https://github.com/rh6423/ComfyUi-PhotoRX/blob/main/.github/CONTRIBUTING.md) before submitting.
+Issues and pull requests welcome!
+
+---
 
 ## References
 

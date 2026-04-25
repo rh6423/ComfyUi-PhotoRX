@@ -181,9 +181,14 @@ def _compute_variance_lut(mu_r, sigma_r, filter_sigma, zoom, n_levels=256):
         u = g / (n_levels + 0.1)  # [0, 1), same normalization as MC renderer
         lam = (1.0 / avg_area) * math.log(1.0 / (1.0 - u))
         integrand = phi2 * np.expm1(lam * A_int)  # expm1(x) = exp(x) - 1
-        # Scale factor to match Monte Carlo renderer
-        # The analytical variance is overestimated due to discretization effects
-        scale_factor = 1.0 / 12.0  # Empirically determined
+        # Scale factor to match Monte Carlo renderer output.
+        # The analytical variance formula overestimates due to discretization effects:
+        # the continuous integral assumes infinite resolution, but we're computing
+        # variance on a discrete pixel grid. The 1/12 factor (variance of uniform[0,1])
+        # empirically corrects for this mismatch and aligns the fast renderer's output
+        # with the Monte Carlo ground truth at typical parameter values (filter_sigma=0.8,
+        # zoom=1.0). This is a calibration constant, not a theoretical derivation.
+        scale_factor = 1.0 / 12.0
         lut[g] = scale_factor * (1.0 - u) ** 2 * np.sum(integrand)
 
     return lut
@@ -244,22 +249,44 @@ def _compute_autocovariance_1d(mu_r, sigma_r, filter_sigma, zoom,
 
 def _fft_convolve_2d(image, kernel):
     """
-    2D convolution via FFT. Kernel is centered and zero-padded to image size.
-    Uses wraparound (periodic) boundary conditions.
+    2D convolution via FFT with zero-padding (valid convolution).
+
+    Uses zero-padding to avoid periodic boundary artifacts that would cause
+    visible texture matching between image edges. The output is cropped to
+    the original image size after convolution.
     """
     ih, iw = image.shape
     kh, kw = kernel.shape
+
+    # Zero-pad image and kernel to (H + kh - 1, W + kw - 1) for valid convolution
+    pad_h, pad_w = ih + kh - 1, iw + kw - 1
+
+    # Pad image with zeros
+    image_padded = np.zeros((pad_h, pad_w), dtype=np.float64)
+    image_padded[:ih, :iw] = image
+
+    # Center kernel in padded space (kernel at origin for convolution)
+    # Use vectorized numpy operations instead of slow Python loops
+    kernel_padded = np.zeros((pad_h, pad_w), dtype=np.float64)
     kcy, kcx = kh // 2, kw // 2
+    
+    # Create index grids for kernel positions
+    ky_grid, kx_grid = np.mgrid[0:kh, 0:kw]
+    
+    # Calculate padded positions (vectorized)
+    py = (ky_grid.flatten() - kcy + ih - 1) % pad_h
+    px = (kx_grid.flatten() - kcx + iw - 1) % pad_w
+    
+    # Assign kernel values using advanced indexing
+    kernel_padded[py, px] = kernel.flatten()
 
-    # Place kernel into image-sized array centered at (0,0) with wrap
-    padded = np.zeros((ih, iw), dtype=np.float64)
-    for ky in range(kh):
-        for kx in range(kw):
-            py = (ky - kcy) % ih
-            px = (kx - kcx) % iw
-            padded[py, px] = kernel[ky, kx]
+    # Convolve via FFT
+    result_full = np.real(np.fft.ifft2(np.fft.fft2(image_padded) * np.fft.fft2(kernel_padded)))
 
-    result = np.real(np.fft.ifft2(np.fft.fft2(image) * np.fft.fft2(padded)))
+    # Crop to original image size (center of full convolution result)
+    start_y, start_x = kh // 2, kw // 2
+    result = result_full[start_y:start_y + ih, start_x:start_x + iw]
+
     return result
 
 
@@ -297,14 +324,7 @@ def render_grayscale_fast(image, mu_r, sigma_r, filter_sigma=0.8,
     h, w = image.shape
     out_h, out_w = int(h * zoom), int(w * zoom)
 
-    print(f"  [fast] Grayscale: {w}x{h} -> {out_w}x{out_h}, "
-          f"mu_r={mu_r:.4f}, sigma_r={sigma_r:.4f}")
-    t0 = time.time()
-
     result = _render_channel(image, mu_r, sigma_r, filter_sigma, zoom, seed)
-
-    elapsed = time.time() - t0
-    print(f"  [fast] Done in {elapsed:.3f}s")
 
     return np.clip(result * 255.0, 0, 255).astype(np.uint8)
 
@@ -333,9 +353,7 @@ def render_color_fast(image, channel_mu_r, channel_sigma_r,
     out_h, out_w = int(h * zoom), int(w * zoom)
     output = np.zeros((out_h, out_w, 3), dtype=np.uint8)
 
-    names = ['Red', 'Green', 'Blue']
     for ch in range(3):
-        print(f"  [fast] {names[ch]} channel:")
         ch_seed = seed ^ (ch * 0x1337CAFE + 7)
         result = _render_channel(
             image[:, :, ch],
@@ -357,14 +375,10 @@ def _render_channel(input_ch, mu_r, sigma_r, filter_sigma, zoom, seed):
     out_h, out_w = int(h * zoom), int(w * zoom)
 
     # Step 1: Compute grain kernel (spatial correlation shape)
-    t = time.time()
     kernel = _compute_grain_kernel(mu_r, sigma_r, filter_sigma, zoom)
-    t_kernel = time.time() - t
 
     # Step 2: Compute variance LUT (signal-dependent amplitude)
-    t = time.time()
     var_lut = _compute_variance_lut(mu_r, sigma_r, filter_sigma, zoom)
-    t_var = time.time() - t
 
     # Step 3: Prepare input at output resolution
     if abs(zoom - 1.0) > 0.01:
@@ -379,7 +393,6 @@ def _render_channel(input_ch, mu_r, sigma_r, filter_sigma, zoom, seed):
     u = input_zoomed / 256.0  # normalize to [0, 1)
 
     # Step 4: Generate white noise and filter with grain kernel
-    t = time.time()
     rng = np.random.RandomState(seed)
     noise = rng.randn(out_h, out_w)
     filtered_noise = _fft_convolve_2d(noise, kernel)
@@ -388,7 +401,6 @@ def _render_channel(input_ch, mu_r, sigma_r, filter_sigma, zoom, seed):
     fn_std = np.std(filtered_noise)
     if fn_std > 1e-15:
         filtered_noise /= fn_std
-    t_noise = time.time() - t
 
     # Step 5: Signal-dependent amplitude scaling
     input_idx = np.clip(input_zoomed, 0, 255).astype(np.int32)
@@ -396,8 +408,5 @@ def _render_channel(input_ch, mu_r, sigma_r, filter_sigma, zoom, seed):
 
     # Step 6: Synthesize
     output = u + sigma_map * filtered_noise
-
-    print(f"         kernel: {t_kernel:.3f}s, variance: {t_var:.3f}s, "
-          f"noise+FFT: {t_noise:.3f}s")
 
     return np.clip(output, 0.0, 1.0)
