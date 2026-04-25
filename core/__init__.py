@@ -19,7 +19,7 @@ from .postprocess import (
     apply_chromatic_aberration,
 )
 
-__version__ = "0.2.1"
+__version__ = "0.4.1"
 
 __all__ = [
     # Monte Carlo renderer (ground-truth quality)

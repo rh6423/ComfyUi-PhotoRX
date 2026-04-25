@@ -14,11 +14,12 @@ from .nodes import (
     GrainRX_Advanced,
     GrainRX_ProfileInfo,
     SizeRX,
+    CropRX,
     NODE_CLASS_MAPPINGS,
     NODE_DISPLAY_NAME_MAPPINGS,
 )
 
-__version__ = "1.0.0"
+__version__ = "0.4.1"
 __author__ = "rh6423"
 
 # ComfyUI requires these exports for node registration
@@ -27,6 +28,7 @@ __all__ = [
     "GrainRX_Advanced",
     "GrainRX_ProfileInfo",
     "SizeRX",
+    "CropRX",
     "NODE_CLASS_MAPPINGS",
     "NODE_DISPLAY_NAME_MAPPINGS",
 ]
